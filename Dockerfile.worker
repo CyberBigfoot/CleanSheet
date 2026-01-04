@@ -1,0 +1,32 @@
+# Dockerfile.worker - Isolated sanitization container
+FROM python:3.11-slim
+
+# Install system dependencies for document processing
+RUN apt-get update && apt-get install -y \
+    poppler-utils \
+    libreoffice \
+    imagemagick \
+    ghostscript \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configure ImageMagick to allow PDF operations (if policy.xml exists)
+RUN if [ -f /etc/ImageMagick-6/policy.xml ]; then \
+        sed -i 's/rights="none" pattern="PDF"/rights="read|write" pattern="PDF"/' /etc/ImageMagick-6/policy.xml; \
+    fi && \
+    if [ -f /etc/ImageMagick-7/policy.xml ]; then \
+        sed -i 's/rights="none" pattern="PDF"/rights="read|write" pattern="PDF"/' /etc/ImageMagick-7/policy.xml; \
+    fi
+
+WORKDIR /worker
+
+# Copy worker requirements
+COPY requirements-worker.txt .
+RUN pip install --no-cache-dir -r requirements-worker.txt
+
+# Copy worker script
+COPY worker.py .
+
+# Create processing directories
+RUN mkdir -p /worker/input /worker/output /worker/temp
+
+CMD ["python", "worker.py"]

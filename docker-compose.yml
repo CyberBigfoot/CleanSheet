@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  cleansheet:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cleansheet
+    ports:
+      - "10400:10400"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./output:/app/output
+      - /var/run/docker.sock:/var/run/docker.sock:rw  # Allow spawning containers
+      - .:/app:ro  # Mount source for worker image building (read-only)
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - HOST_PWD=${PWD}  # Pass host working directory
+      - VIRUSTOTAL_API_KEY=YOUR_KEY_HERE  # VirusTotal API key
+    user: root  # Needed to access Docker socket
+    networks:
+      - cleansheet_net
+
+networks:
+  cleansheet_net:
+    driver: bridge
