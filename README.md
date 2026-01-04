@@ -33,6 +33,9 @@ It employs a defense-in-depth approach with multiple security layers:
 - **Pixel Rendering** - Ultimate sanitization by converting documents to pixels and back
 - **Metadata Stripping** - Complete removal of all document metadata
 
+<img width="897" height="802" alt="Screenshot 2026-01-04 000629" src="https://github.com/user-attachments/assets/f36a8973-3c9c-4f29-b4c7-0bd4a7f7435e" />
+
+
 ## ✨ Features
 
 ### Security Features
