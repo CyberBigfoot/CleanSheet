@@ -21,7 +21,7 @@ A multi-layered security platform for sanitizing documents using Content Disarm 
 
 ---
 
-## 🛡️ Overview
+##  Overview
 
 CleanSheet is an enterprise-grade document sanitization service that removes malware, macros, scripts, and embedded threats from uploaded documents. Inspired by the excellent [Dangerzone](https://dangerzone.rocks/) application, CleanSheet provides a web-based, multi-user approach to document sanitization with enhanced features like VirusTotal integration and real-time processing visualization.
 
@@ -36,35 +36,35 @@ It employs a defense-in-depth approach with multiple security layers:
 <img width="897" height="802" alt="Screenshot 2026-01-04 000629" src="https://github.com/user-attachments/assets/f36a8973-3c9c-4f29-b4c7-0bd4a7f7435e" />
 
 
-## ✨ Features
+##  Features
 
 ### Security Features
 
-- 🔍 **Pre & Post Scanning** - VirusTotal integration for comprehensive threat detection
-- 🔒 **Air-Gapped Processing** - Worker containers run with no network access
-- 🧹 **Macro Removal** - Automatically strips VBA macros from Office documents
-- 🚫 **JavaScript Elimination** - Removes all JavaScript from PDFs
-- 📋 **Embedded Object Removal** - Strips embedded files and attachments
-- 🔐 **Metadata Sanitization** - Removes EXIF data and document metadata
-- 🎨 **Pixel-Level Reconstruction** - Converts documents to pixel matrices and rebuilds them
+-  **Pre & Post Scanning** - VirusTotal integration for comprehensive threat detection
+-  **Air-Gapped Processing** - Worker containers run with no network access
+-  **Macro Removal** - Automatically strips VBA macros from Office documents
+-  **JavaScript Elimination** - Removes all JavaScript from PDFs
+-  **Embedded Object Removal** - Strips embedded files and attachments
+-  **Metadata Sanitization** - Removes EXIF data and document metadata
+-  **Pixel-Level Reconstruction** - Converts documents to pixel matrices and rebuilds them
 
 ### Technical Features
 
-- 🐳 **Docker-Based Isolation** - Spawns ephemeral containers for each job
-- 🚀 **Automatic Cleanup** - Removes all traces after processing
-- 📊 **Real-Time Progress** - Visual processing steps and status updates
-- 🎯 **Multi-Format Support** - Handles PDFs, Office documents, and images
-- 💾 **No Storage** - Files deleted immediately after download
-- 🎨 **Modern UI** - Cyberpunk-themed interface with interactive animations
+-  **Docker-Based Isolation** - Spawns ephemeral containers for each job
+-  **Automatic Cleanup** - Removes all traces after processing
+-  **Real-Time Progress** - Visual processing steps and status updates
+-  **Multi-Format Support** - Handles PDFs, Office documents, and images
+-  **No Storage** - Files deleted immediately after download
+-  **Modern UI** - Cyberpunk-themed interface with interactive animations
 
-## 📋 Prerequisites
+##  Prerequisites
 
 - **Docker** (20.10+) and **Docker Compose** (2.0+)
 - **VirusTotal API Key** (free tier available at [virustotal.com](https://www.virustotal.com))
 - **4GB RAM** minimum
 - **Linux/macOS** (Windows with WSL2)
 
-## 🚀 Installation
+##  Installation
 
 ### 1. Clone the Repository
 
@@ -92,13 +92,13 @@ docker-compose up --build
 
 The application will be available at `http://localhost:10400`
 
-## 📖 Usage
+##  Usage
 
 ### Web Interface
 
 1. Navigate to `http://localhost:10400`
 2. Click the upload area or drag & drop a file
-3. Click "🛡️ SANITIZE DOCUMENT"
+3. Click " SANITIZE DOCUMENT"
 4. Watch the real-time processing steps
 5. Download the sanitized PDF automatically
 
@@ -112,7 +112,7 @@ The application will be available at `http://localhost:10400`
 
 **File Size Limit:** 100MB
 
-## 🏗️ Architecture
+##  Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -161,7 +161,7 @@ The application will be available at `http://localhost:10400`
 └─────────────────────────────────────────────────────────┘
 ```
 
-## 🔒 Security Features
+##  Security Features
 
 ### Container Isolation
 
@@ -208,7 +208,7 @@ graph TD
     N --> O
 ```
 
-## ⚙️ Configuration
+##  Configuration
 
 ### Environment Variables
 
@@ -229,7 +229,7 @@ Edit `docker-compose.yml` to customize:
 - Memory/CPU limits
 - API keys
 
-## 🐛 Troubleshooting
+##  Troubleshooting
 
 ### Worker Container Fails to Build
 
@@ -265,7 +265,7 @@ Common causes:
 - Unsupported file format
 - LibreOffice conversion failure
 
-## 🔧 Development
+##  Development
 
 ### Project Structure
 
@@ -293,14 +293,14 @@ FLASK_DEBUG=1 docker-compose up
 
 Edit `worker.py` and add conversion logic in the `convert_to_pdf()` function.
 
-## 📊 Performance
+##  Performance
 
 - **Processing Time**: 5-30 seconds depending on document size
 - **Memory Usage**: ~500MB per worker container
 - **Concurrent Jobs**: Limited by system resources
 - **Throughput**: ~100 documents/hour on 4-core system
 
-## ⚠️ Limitations
+##  Limitations
 
 - Maximum file size: 100MB
 - No cloud storage integration
@@ -308,7 +308,7 @@ Edit `worker.py` and add conversion logic in the `convert_to_pdf()` function.
 - No user authentication
 - No job queue for high volume
 
-## 🆚 CleanSheet vs Dangerzone
+##  CleanSheet vs Dangerzone
 
 While inspired by [Dangerzone](https://dangerzone.rocks/), CleanSheet offers some different features:
 
@@ -327,11 +327,11 @@ While inspired by [Dangerzone](https://dangerzone.rocks/), CleanSheet offers som
 **Use CleanSheet if:** You need a web service for teams or automated workflows
 
 
-## 📄 License
+##  License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## ⚠️ Disclaimer
+##  Disclaimer
 
 **Important:** CleanSheet is a security tool designed to remove threats from documents. However:
 
@@ -342,7 +342,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Use in production environments at your own risk
 - Not responsible for any damages or data loss
 
-## 🙏 Acknowledgments
+##  Acknowledgments
 
 - **[Dangerzone](https://dangerzone.rocks/)** by [Freedom of the Press Foundation](https://freedom.press/) - The original inspiration for this project. Dangerzone pioneered the container-based document sanitization approach.
 - [VirusTotal](https://www.virustotal.com) for their excellent API
@@ -351,7 +351,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [LibreOffice](https://www.libreoffice.org) for document conversion
 - [ReportLab](https://www.reportlab.com) for PDF generation
 
-## 📚 Related Projects
+##  Related Projects
 
 - **[Dangerzone](https://github.com/freedomofpress/dangerzone)** - Desktop document sanitization application
 - **[QubesOS](https://www.qubes-os.org/)** - Security-focused operating system with similar isolation principles
@@ -362,7 +362,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 <div align="center">
 
-**Made with 🛡️ by CyberBigfoot**
+**Made with  by CyberBigfoot**
 
 *Standing on the shoulders of giants like Dangerzone*
 
