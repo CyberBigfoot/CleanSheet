@@ -5,13 +5,51 @@ import re
 import dns.resolver
 import whois
 from urllib.parse import urlparse
-from flask import Flask, request, send_file, render_template_string, jsonify
+from flask import Flask, request, send_file, render_template_string, jsonify, Response
 from werkzeug.utils import secure_filename
 import time
 import requests
 import hashlib
+import threading
+from collections import defaultdict
 
 app = Flask(__name__)
+
+# Event emitters for SSE progress updates
+_event_listeners = defaultdict(list)
+
+def emit_progress(job_id, step, message):
+    """Emit a progress event to all listeners for a job"""
+    for listener in _event_listeners[job_id]:
+        try:
+            listener(f"data: {step}|{message}\n\n")
+        except:
+            pass
+
+def sse_progress(job_id):
+    """Server-Sent Events endpoint for progress updates"""
+    def generate():
+        queue = []
+        
+        def listener(data):
+            queue.append(data)
+        
+        _event_listeners[job_id].append(listener)
+        
+        try:
+            while True:
+                if queue:
+                    data = queue.pop(0)
+                    yield data
+                else:
+                    time.sleep(0.1)
+        finally:
+            if job_id in _event_listeners:
+                _event_listeners[job_id].remove(listener)
+                if not _event_listeners[job_id]:
+                    del _event_listeners[job_id]
+    
+    return Response(generate(), mimetype='text/event-stream')
 
 UPLOAD_FOLDER = '/app/uploads'
 OUTPUT_FOLDER = '/app/output'
@@ -37,12 +75,12 @@ def scan_with_virustotal(filepath, job_id):
     Returns: (is_clean: bool, message: str, stats: dict or None)
     """
     if not VIRUSTOTAL_API_KEY:
-        print(f"[{job_id}] VirusTotal API key not configured - skipping AV scan")
+        pass  # Logging disabled
         return True, "No API key configured", None
     try:
         file_hash = get_file_hash(filepath)
         headers = {"x-apikey": VIRUSTOTAL_API_KEY}
-        print(f"[{job_id}] Checking VirusTotal for hash: {file_hash}")
+        pass  # Logging disabled
         response = requests.get(
             f"https://www.virustotal.com/api/v3/files/{file_hash}",
             headers=headers,
@@ -71,7 +109,6 @@ def scan_with_virustotal(filepath, job_id):
                 return False, f"{suspicious}/{total} engines flagged as suspicious", scan_stats
             return True, f"0/{total} threats detected", scan_stats
         if response.status_code == 404:
-            print(f"[{job_id}] File not in VT cache, uploading...")
             with open(filepath, "rb") as f:
                 files = {"file": (os.path.basename(filepath), f)}
                 response = requests.post(
@@ -81,17 +118,14 @@ def scan_with_virustotal(filepath, job_id):
                     timeout=120
                 )
             if response.status_code in (200, 201):
-                print(f"[{job_id}] Upload success, scan pending")
                 return True, "Scan queued (first-time upload)", None
-            print(f"[{job_id}] VT upload failed: {response.status_code}")
             return True, "Upload failed - proceeding", None
-        print(f"[{job_id}] VT API error: {response.status_code}")
         return True, f"API error - proceeding", None
     except requests.exceptions.Timeout:
-        print(f"[{job_id}] VirusTotal timeout - proceeding")
+        pass  # Logging disabled
         return True, "Scan timeout - proceeding", None
     except Exception as e:
-        print(f"[{job_id}] VirusTotal error: {e}")
+        pass  # Logging disabled
         return True, f"Scan error - proceeding", None
 
 def check_ip_with_virustotal(ip):
@@ -146,7 +180,7 @@ def check_url_with_virustotal(url):
     import base64
     url_id = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
     
-    print(f"[VT] Checking URL: {url}")
+    pass  # Logging disabled
     response = requests.get(f"https://www.virustotal.com/api/v3/urls/{url_id}", headers=headers)
     
     if response.status_code == 200:
@@ -305,7 +339,7 @@ def get_whois_info(url):
         if not domain:
             return None
         
-        print(f"[WHOIS] Looking up domain: {domain}")
+        pass  # Logging disabled
         w = whois.whois(domain)
         
         if not w or not w.domain_name:
@@ -338,7 +372,7 @@ def get_whois_info(url):
                 age = now - creation_date
                 return f"{age.days // 365} years, {age.days % 365} days"
             except Exception as age_err:
-                print(f"[WHOIS] Age calculation error: {age_err}")
+                pass  # Logging disabled
                 return "Unknown"
 
         return {
@@ -360,7 +394,7 @@ def get_whois_info(url):
             'dnssec': getattr(w, 'dnssec', None),
         }
     except Exception as e:
-        print(f"[WHOIS] Error: {e}")
+        pass  # Logging disabled
         return None
 
 def sanitize_in_container(input_path, output_path, job_id):
@@ -368,11 +402,13 @@ def sanitize_in_container(input_path, output_path, job_id):
     try:
         client = docker.DockerClient(base_url='unix:///var/run/docker.sock')
     except Exception as e:
-        print(f"ERROR: Cannot connect to Docker: {e}")
+        emit_progress(job_id, 'error', 'Cannot connect to Docker')
         return False
     
     container = None
     try:
+        emit_progress(job_id, 'step2', 'Building worker image...')
+        
         # Build (or select) a worker image based on current worker sources.
         # This avoids stale Docker cache issues where old worker code keeps running.
         host_pwd = os.environ.get('HOST_PWD', '/app')
@@ -385,17 +421,17 @@ def sanitize_in_container(input_path, output_path, job_id):
                     with open(rel, 'rb') as f:
                         hasher.update(f.read())
                 else:
-                    print(f"[{job_id}] Warning: {rel} not found for hashing")
+                    pass  # Logging disabled
             worker_tag = f"cleansheet-worker:{hasher.hexdigest()[:12]}"
         except Exception as e:
             # Fall back to the legacy tag if we can't hash local files for any reason
-            print(f"[{job_id}] Warning: could not hash worker sources: {e}")
+            pass  # Logging disabled
             worker_tag = "cleansheet-worker:latest"
 
         try:
             client.images.get(worker_tag)
         except docker.errors.ImageNotFound:
-            print(f"[{job_id}] Building worker image...")
+            pass  # Logging disabled
             try:
                 client.images.build(
                     path='/app',
@@ -404,14 +440,14 @@ def sanitize_in_container(input_path, output_path, job_id):
                     rm=True,
                     forcerm=True
                 )
-                print(f"[{job_id}] Worker image built successfully")
+                pass  # Logging disabled
             except Exception as build_error:
-                print(f"[{job_id}] ERROR building worker image: {build_error}")
+                pass  # Logging disabled
                 return False
         host_uploads = os.path.join(host_pwd, 'uploads')
         host_output = os.path.join(host_pwd, 'output')
         
-        print(f"[{job_id}] [1/7] Spawning isolated worker container...")
+        emit_progress(job_id, 'step2', 'Spawning container...')
         
         container = client.containers.run(
             worker_tag,
@@ -435,39 +471,37 @@ def sanitize_in_container(input_path, output_path, job_id):
             tmpfs={'/tmp': 'size=1g,mode=1777'},
         )
         
-        print(f"[{job_id}] [2/7] Container {container.id[:12]} deployed")
-        print(f"[{job_id}] [3/7] Processing document...")
-        
+        emit_progress(job_id, 'step3', 'Container running - applying CDR...')
+                        
         result = container.wait(timeout=300)
-        print(f"[{job_id}] [4/7] Container processing complete")
         
         logs = container.logs().decode('utf-8')
-        print(f"[{job_id}] Worker logs: {logs}")
         
-        print(f"[{job_id}] [5/7] Terminating container...")
+        emit_progress(job_id, 'step7', 'Terminating container...')
+        
         container.remove(force=True)
         
         if result['StatusCode'] == 0:
-            print(f"[{job_id}] [6/7] Validating output...")
             if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
-                print(f"[{job_id}] Output validation failed")
+                emit_progress(job_id, 'error', 'Output validation failed')
                 return False
             
-            print(f"[{job_id}] [7/7] Scanning sanitized output...")
+            emit_progress(job_id, 'step6', 'Scanning sanitized output...')
+            
             is_clean, scan_message, _ = scan_with_virustotal(output_path, job_id)
-            print(f"[{job_id}] Output scan: {scan_message}")
             
             if not is_clean:
                 if os.path.exists(output_path): os.remove(output_path)
+                emit_progress(job_id, 'error', f'Threat detected: {scan_message}')
                 return False
             
+            emit_progress(job_id, 'complete', 'Sanitization complete')
             return True
+        emit_progress(job_id, 'error', 'Container processing failed')
         return False
             
     except Exception as e:
-        print(f"[{job_id}] Error in sanitization sequence: {e}")
-        import traceback
-        traceback.print_exc()
+        emit_progress(job_id, 'error', str(e))
         return False
     finally:
         if container:
@@ -491,6 +525,7 @@ HTML_TEMPLATE = '''
 <html>
 <head>
     <title>CleanSheet - Advanced Security Suite</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%2300ffff'/%3E%3Cstop offset='100%25' stop-color='%238a2be2'/%3E%3C/linearGradient%3E%3Cfilter id='glow' x='-20%25' y='-20%25' width='140%25' height='140%25'%3E%3CfeGaussianBlur stdDeviation='3' result='blur'/%3E%3CfeComposite in='SourceGraphic' in2='blur' operator='over'/%3E%3C/filter%3E%3C/defs%3E%3Cpath d='M50 5 L10 20 L10 60 C10 80 30 90 50 95 C70 90 90 80 90 60 L90 20 Z' fill='none' stroke='url(%23g)' stroke-width='6' filter='url(%23glow)'/%3E%3Cpath d='M50 15 L18 27 L18 58 C18 75 33 84 50 88 C67 84 82 75 82 58 L82 27 Z' fill='url(%23g)'/%3E%3Cpath d='M30 40 L60 40 M30 55 L70 55 M30 70 L50 70' stroke='%230a0e27' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Roboto+Mono:wght@300;400;700&display=swap');
@@ -1785,6 +1820,60 @@ HTML_TEMPLATE = '''
                 formData.append('vt_scan', 'on');
             }
             
+            // Generate a job ID for progress tracking
+            const jobId = crypto.randomUUID();
+            formData.append('job_id', jobId);
+            
+            // Connect to SSE for real-time progress updates
+            const eventSource = new EventSource('/api/progress/' + jobId);
+            
+            eventSource.onmessage = (event) => {
+                const [step, message] = event.data.split('|');
+                
+                if (step === 'error') {
+                    statusMessage.innerHTML = 'ERROR: ' + message;
+                    eventSource.close();
+                    return;
+                }
+                
+                if (step === 'complete') {
+                    statusMessage.innerHTML = '✓ Sanitization complete';
+                    eventSource.close();
+                    return;
+                }
+                
+                // Map step to UI element
+                const stepMap = {
+                    'step2': 'step2',
+                    'step3': 'step3',
+                    'step4': 'step4',
+                    'step5': 'step5',
+                    'step6': 'step6',
+                    'step7': 'step7'
+                };
+                
+                if (stepMap[step]) {
+                    // Complete all previous steps
+                    const stepOrder = ['step1', 'step2', 'step3', 'step4', 'step5', 'step6', 'step7'];
+                    const currentIndex = stepOrder.indexOf(stepMap[step]);
+                    
+                    for (let i = 0; i <= currentIndex; i++) {
+                        setStepComplete(stepOrder[i]);
+                    }
+                    
+                    // Set current step as active
+                    if (currentIndex < stepOrder.length - 1) {
+                        setStepActive(stepOrder[currentIndex + 1]);
+                    }
+                    
+                    statusMessage.innerHTML = '<div class="cyber-spinner"></div> ' + message + '...';
+                }
+            };
+            
+            eventSource.onerror = () => {
+                eventSource.close();
+            };
+            
             // Helper to update step status
             const setStepActive = (stepId) => {
                 const el = document.getElementById(stepId);
@@ -2165,6 +2254,11 @@ HTML_TEMPLATE = '''
 </html>
 '''
 
+@app.route('/api/progress/<job_id>')
+def api_progress(job_id):
+    """Server-Sent Events endpoint for progress updates"""
+    return sse_progress(job_id)
+
 @app.route('/', methods=['GET', 'POST'])
 def upload_file():
     if request.method == 'POST':
@@ -2186,7 +2280,8 @@ def upload_file():
                 return jsonify({'error': 'File size exceeds 100MB limit'}), 400
             
             filename = secure_filename(file.filename)
-            job_id = str(uuid.uuid4())
+            # Use job_id from frontend if provided, otherwise generate new one
+            job_id = request.form.get('job_id') or str(uuid.uuid4())
             
             input_path = os.path.join(UPLOAD_FOLDER, f"{job_id}_{filename}")
             output_path = os.path.join(OUTPUT_FOLDER, f"{job_id}_sanitized.pdf")
@@ -2202,20 +2297,16 @@ def upload_file():
             scan_stats = None
             
             if vt_scan_requested:
-                print(f"\n{'='*60}")
-                print(f"PRE-PROCESSING SECURITY SCAN")
-                print(f"{'='*60}")
-                
                 # Pre-scan with VirusTotal (informational only, don't reject)
+                emit_progress(job_id, 'step1', 'Pre-scanning with VirusTotal...')
                 is_clean, scan_message, scan_stats = scan_with_virustotal(input_path, job_id)
-                print(f"Pre-scan result: {scan_message}")
                 
                 threat_detected = not is_clean
                 if threat_detected:
-                    print(f"⚠ THREAT DETECTED: {scan_message} - Processing anyway...")
+                    pass  # threat detected but processing continues
                 threat_info = scan_message if threat_detected else None
             else:
-                print(f"\n[{job_id}] VirusTotal scan skipped (not requested)")
+                pass  # VT scan skipped
             
             if sanitize_in_container(input_path, output_path, job_id):
                 time.sleep(2)
@@ -2244,22 +2335,13 @@ def upload_file():
                     else:
                         response.headers['X-Prescan-Result'] = 'SKIPPED'
                     
-                    print(f"\n{'='*60}")
-                    print(f"SECURE CLEANUP INITIATED")
-                    print(f"{'='*60}")
-                    
                     @response.call_on_close
                     def cleanup():
                         if os.path.exists(input_path):
                             os.remove(input_path)
-                            print(f"[CHECK] Deleted original upload")
                         
                         if os.path.exists(output_path):
                             os.remove(output_path)
-                            print(f"✓ Deleted sanitized output")
-                        
-                        print(f"✓ All traces purged")
-                        print(f"{'='*60}\n")
                     
                     return response
             
@@ -2269,9 +2351,6 @@ def upload_file():
             return jsonify({'error': 'Sanitization failed'}), 500
             
         except Exception as e:
-            print(f"ERROR: {e}")
-            import traceback
-            traceback.print_exc()
             return jsonify({'error': str(e)}), 500
     
     return render_template_string(HTML_TEMPLATE)
@@ -2301,7 +2380,6 @@ def api_check_url():
         return jsonify(result)
     
     except Exception as e:
-        print(f"[API] Check URL error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/check-email', methods=['POST'])
@@ -2318,7 +2396,6 @@ def api_check_email():
         return jsonify(result)
     
     except Exception as e:
-        print(f"[API] Check Email error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/analyze-headers', methods=['POST'])
@@ -2338,7 +2415,6 @@ def api_analyze_headers():
         return jsonify(result)
     
     except Exception as e:
-        print(f"[API] Analyze Headers error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/check-ip', methods=['POST'])
@@ -2357,23 +2433,11 @@ def api_check_ip():
         return jsonify(result)
     
     except Exception as e:
-        print(f"[API] Check IP error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
-    print("="*60)
-    print("CLEANSHEET ADVANCED SECURITY INITIALIZATION")
-    print("="*60)
-    
-    if VIRUSTOTAL_API_KEY:
-        print("[CHECK] VirusTotal API key configured")
-    else:
-        print("⚠ VirusTotal API key not found (set VIRUSTOTAL_API_KEY)")
-    
+    # Cleanup orphaned files on startup
     cleanup_orphaned_files()
     
-    print("\n" + "="*60)
-    print("Starting Flask server on port 10400...")
-    print("="*60 + "\n")
-    
+    # Start Flask server
     app.run(host='0.0.0.0', port=10400, debug=False)
