@@ -209,6 +209,17 @@ graph TD
     N --> O
 ```
 
+##  Zero Logging Policy
+
+CleanSheet is built with privacy as a fundamental principle. We guarantee that **no logs are kept ever**. 
+
+- **No Upload Logs**: CleanSheet does not log what files are uploaded, who uploaded them, or when they were uploaded.
+- **No Content Logs**: The contents of your documents are never logged, inspected, or recorded.
+- **No IP Logging**: CleanSheet does not store IP addresses or connection metadata of users accessing the service.
+- **Ephemeral Processing**: All processing happens in isolated containers that are completely destroyed immediately after the sanitization process is complete.
+
+Your data belongs exclusively to you. Once a file is processed and downloaded, it is permanently deleted, leaving zero trace on the system.
+
 ##  Configuration
 
 ### Environment Variables
