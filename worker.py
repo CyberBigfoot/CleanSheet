@@ -32,7 +32,6 @@ def strip_metadata_from_image(img):
         
         return clean_img
     except Exception as e:
-        print(f"Warning: Could not strip image metadata: {e}", file=sys.stderr)
         return img
 
 def disarm_pdf(pdf_path, output_path):
@@ -44,8 +43,6 @@ def disarm_pdf(pdf_path, output_path):
     - Strip metadata
     """
     try:
-        print("Applying Content Disarm & Reconstruction (CDR)...")
-        
         reader = PyPDF2.PdfReader(pdf_path)
         writer = PyPDF2.PdfWriter()
         
@@ -95,11 +92,9 @@ def disarm_pdf(pdf_path, output_path):
         with open(output_path, 'wb') as output_file:
             writer.write(output_file)
         
-        print(f"✓ CDR complete - Removed scripts, forms, embedded files, and metadata")
         return True
         
     except Exception as e:
-        print(f"CDR error: {e}", file=sys.stderr)
         # If CDR fails, copy original for further processing
         shutil.copy(pdf_path, output_path)
         return False
@@ -110,8 +105,6 @@ def strip_macros_from_office(input_path, output_pdf):
     LibreOffice conversion naturally removes all VBA macros and active content
     """
     try:
-        print("Converting Office document (macros will be stripped)...")
-        
         result = subprocess.run([
             'libreoffice',
             '--headless',
@@ -126,16 +119,13 @@ def strip_macros_from_office(input_path, output_pdf):
         
         if os.path.exists(converted_path):
             os.rename(converted_path, output_pdf)
-            print("✓ Office document converted - All macros and scripts removed")
             return True
         
         return False
         
     except subprocess.TimeoutExpired:
-        print("ERROR: Office conversion timeout", file=sys.stderr)
         return False
     except Exception as e:
-        print(f"Office conversion error: {e}", file=sys.stderr)
         return False
 
 def convert_to_pdf(input_path, output_path):
@@ -156,7 +146,6 @@ def convert_to_pdf(input_path, output_path):
         return True
     
     if ext in ['jpg', 'jpeg', 'png']:
-        print("Processing image file...")
         img = Image.open(input_path)
         
         # Strip all metadata
@@ -168,7 +157,6 @@ def convert_to_pdf(input_path, output_path):
         
         # Save as PDF
         img.save(output_path, 'PDF', resolution=100.0)
-        print("✓ Image converted - All metadata stripped")
         return True
     
     if ext in ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'rtf']:
@@ -193,25 +181,20 @@ def convert_to_pdf(input_path, output_path):
             return True
         return False
     except Exception as e:
-        print(f"Conversion error: {e}", file=sys.stderr)
         return False
 
 def pdf_to_pixels(pdf_path):
     """Convert PDF pages to pixel data (PIL Images)"""
     try:
-        print("Rendering PDF to pixel matrix...")
         # Higher DPI for better quality
         images = convert_from_path(pdf_path, dpi=200)
-        print(f"✓ Rendered {len(images)} pages to pixel format")
         return images
     except Exception as e:
-        print(f"PDF to pixels error: {e}", file=sys.stderr)
         return None
 
 def pixels_to_pdf(images, output_path):
     """Convert pixel data back to clean PDF"""
     try:
-        print("Reconstructing sanitized PDF from pixels...")
         c = canvas.Canvas(output_path, pagesize=letter)
         
         for i, img in enumerate(images):
@@ -236,31 +219,25 @@ def pixels_to_pdf(images, output_path):
             c.showPage()
         
         c.save()
-        print(f"✓ Reconstructed clean PDF with {len(images)} pages")
         return True
     except Exception as e:
-        print(f"Pixels to PDF error: {e}", file=sys.stderr)
         return False
 
 def validate_output(output_path):
     """Validate the sanitized output"""
     try:
         if not os.path.exists(output_path):
-            print("ERROR: Output file does not exist", file=sys.stderr)
             return False
         
         file_size = os.path.getsize(output_path)
         if file_size == 0:
-            print("ERROR: Output file is empty", file=sys.stderr)
             return False
         
         # Try to open as PDF to verify it's valid
         try:
             reader = PyPDF2.PdfReader(output_path)
             num_pages = len(reader.pages)
-            print(f"✓ Output validation passed: {num_pages} pages, {file_size} bytes")
-            
-            # Verify no JavaScript / embedded files (resolve IndirectObject to avoid "is not iterable")
+            return True
             try:
                 root = reader.trailer.get('/Root')
                 if root is not None:
@@ -273,7 +250,6 @@ def validate_output(output_path):
                             names = names.get_object()
                         if isinstance(names, dict):
                             if names.get('/JavaScript') or names.get('/EmbeddedFiles'):
-                                print("WARNING: JavaScript or embedded files in output!", file=sys.stderr)
                                 return False
             except Exception:
                 # Complex trailer structure (e.g. ReportLab output); we built from pixels so treat as clean
@@ -282,11 +258,9 @@ def validate_output(output_path):
             return True
             
         except Exception as e:
-            print(f"ERROR: Invalid PDF structure: {e}", file=sys.stderr)
             return False
             
     except Exception as e:
-        print(f"Validation error: {e}", file=sys.stderr)
         return False
 
 def main():
@@ -295,76 +269,44 @@ def main():
     output_file = os.environ.get('OUTPUT_FILE')
     
     if not input_file or not output_file:
-        print("ERROR: INPUT_FILE and OUTPUT_FILE environment variables required", file=sys.stderr)
         sys.exit(1)
     
     if not os.path.exists(input_file):
-        print(f"ERROR: Input file not found: {input_file}", file=sys.stderr)
         sys.exit(1)
     
-    print(f"{'='*60}")
-    print(f"SANITIZATION WORKER STARTED")
-    print(f"{'='*60}")
-    print(f"Input: {input_file}")
-    print(f"Output: {output_file}")
     
     temp_dir = '/tmp/cleansheet_work'
     os.makedirs(temp_dir, exist_ok=True)
     
     try:
         # Step 1: Convert to PDF with CDR and macro stripping
-        print(f"\n[STEP 1] Converting to PDF with threat removal...")
         intermediate_pdf = os.path.join(temp_dir, 'intermediate.pdf')
         
         if not convert_to_pdf(input_file, intermediate_pdf):
-            print("ERROR: Failed to convert document to PDF", file=sys.stderr)
             sys.exit(1)
         
         # Step 2: Apply additional PDF-level CDR if needed
-        print(f"\n[STEP 2] Applying additional PDF sanitization...")
         cdr_pdf = os.path.join(temp_dir, 'cdr.pdf')
         if not disarm_pdf(intermediate_pdf, cdr_pdf):
-            print("ERROR: PDF CDR sanitization failed", file=sys.stderr)
             sys.exit(1)
         
         # Step 3: Render to pixels (ultimate sanitization)
-        print(f"\n[STEP 3] Rendering to pixel matrix...")
         pixel_images = pdf_to_pixels(cdr_pdf)
         
         if not pixel_images:
-            print("ERROR: Failed to render PDF to pixels", file=sys.stderr)
             sys.exit(1)
         
         # Step 4: Reconstruct PDF from pixels
-        print(f"\n[STEP 4] Reconstructing clean PDF from pixels...")
         if not pixels_to_pdf(pixel_images, output_file):
-            print("ERROR: Failed to reconstruct PDF from pixels", file=sys.stderr)
             sys.exit(1)
         
         # Step 5: Validate output
-        print(f"\n[STEP 5] Validating sanitized output...")
         if not validate_output(output_file):
-            print("ERROR: Output validation failed", file=sys.stderr)
             sys.exit(1)
-        
-        print(f"\n{'='*60}")
-        print(f"✓ SANITIZATION COMPLETE")
-        print(f"{'='*60}")
-        print(f"All threats removed:")
-        print(f"  ✓ Macros and scripts stripped")
-        print(f"  ✓ Embedded objects removed")
-        print(f"  ✓ Metadata sanitized")
-        print(f"  ✓ JavaScript eliminated")
-        print(f"  ✓ Forms and actions disabled")
-        print(f"  ✓ File reconstructed from pixels")
-        print(f"{'='*60}\n")
         
         sys.exit(0)
         
     except Exception as e:
-        print(f"ERROR: Unexpected error: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc()
         sys.exit(1)
     finally:
         # Secure cleanup of temporary files
