@@ -15,6 +15,8 @@ A multi-layered security platform for sanitizing documents using Content Disarm 
 
 *Inspired by [Dangerzone](https://dangerzone.rocks/) from Freedom of the Press Foundation*
 
+*Try CleanSheet for yourself [CleanSheet](https://cleansheet.ittools.work/)*
+
 [Features](#features) • [Installation](#installation) • [Usage](#usage) • [Security](#security-features) • [Architecture](#architecture)
 
 </div>
