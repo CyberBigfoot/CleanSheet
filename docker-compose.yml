@@ -17,7 +17,7 @@ services:
       - PYTHONUNBUFFERED=1
       - DOCKER_HOST=unix:///var/run/docker.sock
       - HOST_PWD=${PWD}  # Pass host working directory
-      - VIRUSTOTAL_API_KEY=YOUR_KEY_HERE  # VirusTotal API key
+      - VIRUSTOTAL_API_KEY=YOUR_API_KEY_HERE  # VirusTotal API key
     user: root  # Needed to access Docker socket
     networks:
       - cleansheet_net
